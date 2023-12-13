@@ -1,0 +1,2 @@
+#!/bin/sh
+equery list '*' | xargs -n1 equery d | sort | uniq -c | sort

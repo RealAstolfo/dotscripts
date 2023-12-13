@@ -1,0 +1,137 @@
+#!/bin/sh
+TARGET_ARCH=$1
+TARGET=${TARGET_ARCH}-gentoo-linux-gnu
+ROOTFS=/usr/${TARGET}
+
+if [ -z "${TARGET_ARCH}" ]; then
+    echo "example: make-live x86_64"
+    exit
+fi
+
+crossdev -S -t ${TARGET}
+
+if [ ${TARGET_ARCH} = 'x86_64' ]; then
+    ARCH=amd64 PORTAGE_CONFIGROOT=${ROOTFS} eselect profile set 1
+fi
+
+sid -i -e "s:-pam::" ${ROOTFS}/etc/portage/make.conf
+mkdir -p ${ROOTFS}/{proc,sys,dev,run}
+cp /usr/bin/qemu-${TARGET_ARCH} ${ROOTFS}/usr/bin/
+
+USE="-filecaps -openmp" ${TARGET}-emerge -uvq --keep-going @system
+USE="-filecaps -openmp" ${TARGET}-emerge -uvq1 --keep-going $(egrep '^[a-z]+' /var/db/repos/gentoo/profiles/default/linux/packages.build)
+
+arch-chroot /usr/${TARGET_ARCH} "emerge -quvDU @system && \
+	    			 emerge -quvDU @world && \
+				 emerge -1vn squashfs-tools dosfstools syslinux grub genkernel gentoo-sources && \
+				 genkernel --bootdir=/boot --firmware all"
+
+### ISO make section
+
+ISONAME=${TARGET}
+EXCLUDE_DIRS="var/cache/distfiles/* var/tmp/* proc/* sys/* dev/* run/* boot/* root/* var/cache/edb/* var/db/pkg/* var/db/repos/gentoo/* var/db/repos/local/* var/db/repos/palemoon/* var/tmp/portage/* var/cache/distfiles/* var/cache/binpkgs/* var/log/* var/tmp/* usr/include/* usr/src/* etc/kernels/* etc/portage/*"
+
+for i in $EXCLUDE_DIRS; do
+    squashfsexclude="$squashfsexclude -e ${ROOTFS}/$i"
+done
+
+for i in ${ROOTFS}/boot/*; do
+    file $i | grep -q bzImage || continue
+    KERNELFILE=$i
+    KERNELVER=$(file $i | awk '{print $9}')
+done
+
+RDFILE="${ROOTFS}/boot/initramfs-$KERNELVER"
+
+if [ ! "$KERNELFILE" ]; then
+    echo "kernel file does not exist"
+    exit 1
+fi
+
+if [ ! -d "${ROOTFS}/usr/lib/modules/$KERNELVER" ] && [ ! -d "${ROOTFS}/lib/modules/$KERNELVER" ]; then
+    echo "kernel directory does not exist"
+    exit 1
+fi
+
+if [ -d "${ROOTFS}/usr/lib/grub/x86_64-efi" ]; then
+    GRUBEFIDIR="${ROOTFS}/usr/lib/grub/x86_64-efi"
+elif [ -d "${ROOTFS}/usr/lib64/grub/x86_64-efi" ]; then
+    GRUBEFIDIR="${ROOTFS}/usr/lib64/grub/x86_64-efi"
+else
+    echo "grub-efi files not found on target system"
+    exit 1
+fi
+
+echo "output: $ISONAME.iso"
+echo "kernel: $KERNELFILE ($KERNELVER)"
+
+BASE_DIR=~/.local/share/iso
+mkdir -p ${BASE_DIR}/{boot,isolinux}
+
+
+cp ${ROOTFS}/usr/share/syslinux/*.c32 ${BASE_DIR}/isolinux
+cp ${ROOTFS}/usr/share/syslinux/memdisk ${BASE_DIR}/isolinux
+cp ${ROOTFS}/usr/share/syslinux/isolinux.bin ${BASE_DIR}/isolinux
+cp ${ROOTFS}/usr/share/syslinux/boot.cat ${BASE_DIR}/isolinux
+
+mksquashfs ${ROOTFS} ${BASE_DIR}/boot/${TARGET}.squashfs -b 1024K -comp xz -progress $squashfsexclude 2>/dev/null
+
+cp ${ROOTFS}/${KERNELFILE} ${BASE_DIR}/boot/
+cp ${ROOTFS}/${RDFILE} ${BASE_DIR}/boot/
+
+mkdir -p ${BASE_DIR}/boot/grub/{x86_64-efi,fonts}
+echo 'set prefix=/boot/grub' > ${BASE_DIR}/boot/grub-early.cfg
+cp -a $GRUBEFIDIR/*.mod ${BASE_DIR}/boot/grub/x86_64-efi
+cp -a $GRUBEFIDIR/*.lst ${BASE_DIR}/boot/grub/x86_64-efi
+cp ${ROOTFS}/usr/share/grub/unicode.pf2 ${BASE_DIR}/boot/grub/fonts
+
+mkdir -p ${BASE_DIR}/efi/boot
+grub-mkimage -c ${BASE_DIR}/boot/grub-early.cfg -o ${BASE_DIR}/efi/boot/bootx64.efi -O x86_64-efi -p "" iso9660 normal search search_fs_file
+dd if=/dev/zero of=${BASE_DIR}/boot/efiboot.img count=4096
+mkfs.vfat -f 1 -F 12 efiboot.img
+mkdir -p ${BASE_DIR}/boot/efiboot
+mount -o loop ${BASE_DIR}/boot/efiboot.img ${BASE_DIR}/boot/efiboot
+mkdir -p ${BASE_DIR}/boot/efiboot/EFI/boot
+cp ${BASE_DIR}/efi/boot/bootx64.efi ${BASE_DIR}/boot/efiboot/EFI/boot
+umount ${BASE_DIR}/boot/efiboot
+rm -r ${BASE_DIR}/boot/efiboot
+
+echo "
+DEFAULT gentoo
+LABEL gentoo
+      LINUX $KERNELFILE
+      INITRD $RDFILE
+      APPEND root=/dev/ram0 rw rootfstype=squashfs squashfs=/boot/${TARGET}.squashfs" > ${BASEDIR}/isolinux/isolinux.cfg
+
+echo "
+set timeout=10
+set default=0
+
+insmod all_video
+insmod gfxterm
+terminal_output gfxterm
+loadfont /boot/grub/fonts/unicode.pf2
+
+menuentry \"Boot LiveCD\" {
+   set gfxpayload=keep
+   linux $KERNELFILE root=/dev/ram0 rw rootfstype=squashfs squashfs=/boot/${TARGET}.squashfs
+   initrd $RDFILE
+}" > ${BASE_DIR}/boot/grub/grub.cfg
+
+
+xorriso -as mkisofs \
+	-isohybrid-mbr ${ROOTFS}/usr/share/syslinux/isohdpfx.bin \
+	-c ${BASE_DIR}/isolinux/boot.cat \
+	-b ${BASE_DIR}/isolinux/isolinux.bin \
+	-no-emul-boot \
+	-boot-load-size 4 \
+	-eltorito-alt-boot \
+	-e ${BASE_DIR}/boot/efiboot.img \
+	-no-emul-boot \
+	-isohybrid-gpt-basdat \
+	-volid LIVEISO \
+	-o $ISONAME.iso ${BASE_DIR}
+
+### End ISO make section
+
+crossdev --clean -S -t ${TARGET}
