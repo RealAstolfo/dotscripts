@@ -1,0 +1,2 @@
+#!/bin/sh
+equery list '*' | while read -r pkg; do count=$(equery d "$pkg" | grep '/' | wc -l); echo "$count $pkg"; done | sort
