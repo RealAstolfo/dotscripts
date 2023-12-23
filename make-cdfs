@@ -1,2 +1,2 @@
 #!/bin/sh
-mkisofs -r -o - $1 | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -tao -
+tar czf - $1 | mkisofs -r -o /dev/stdout - | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -
