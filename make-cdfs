@@ -1,2 +1,3 @@
 #!/bin/sh
-tar czf - $1 | mkisofs -r -o /dev/stdout - | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -
+tar czf /tmp/archive.tar.gz $1
+mkisofs -r -o - /tmp/archive.tar.gz | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -

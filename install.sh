@@ -1,3 +1,3 @@
 #!/bin/sh
 chmod +x *.sh
-cp *.sh ~/.local/bin/
+cp * ~/.local/bin/
