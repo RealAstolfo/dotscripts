@@ -1,0 +1,2 @@
+#!/bin/sh
+wf-recorder -f ~/Videos/$(date +"%Y%m%d_%H%M%S").mkv -c libx264 -d /dev/dri/renderD128

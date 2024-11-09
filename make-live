@@ -12,27 +12,24 @@ crossdev -S -t ${TARGET}
 
 sed -i -e "s:-pam::" ${ROOTFS}/etc/portage/make.conf
 
+if [ ${TARGET_ARCH} = 'x86_64' ]; then
+    ARCH=amd64 PORTAGE_CONFIGROOT=${ROOTFS} eselect profile set default/linux/amd64/23.0/split-usr/musl
+fi
+
+if [ ${TARGET_ARCH} = 'aarch64' ]; then
+    ARCH=arm64 PORTAGE_CONFIGROOT=${ROOTFS} eselect profile set default/linux/arm64/23.0/split-usr/musl
+fi
+
 USE="-filecaps -openmp" ${TARGET}-emerge -uvqDN1 --keep-going $(egrep '^[a-z]+' /var/db/repos/gentoo/profiles/default/linux/packages.build)
 USE="-filecaps -openmp" ${TARGET}-emerge -uvqDN --keep-going @system
 if [ "${TARGET}" = "${TARGET_ARCH}-gentoo-linux-gnu" ]; then
     USE="-filecaps -openmp" ${TARGET}-emerge -uvq1 glibc
 fi
 
-if [ ${TARGET_ARCH} = 'x86_64' ]; then
-    ARCH=amd64 PORTAGE_CONFIGROOT=${ROOTFS} eselect profile set default/linux/amd64/17.0/musl
-fi
-
-if [ ${TARGET_ARCH} = 'aarch64' ]; then
-    ARCH=arm64 PORTAGE_CONFIGROOT=${ROOTFS} eselect profile set default/linux/arm64/17.0/musl
-fi
-
 
 mkdir -p ${ROOTFS}/{proc,sys,dev,run}
 cp /usr/bin/qemu-${TARGET_ARCH} ${ROOTFS}/usr/bin/
-arch-chroot /usr/${TARGET_ARCH} "emerge -quvDU @system && \
-	    			 emerge -quvDU @world && \
-				 emerge -1vn squashfs-tools dosfstools syslinux grub genkernel gentoo-sources && \
-				 genkernel --bootdir=/boot --firmware all"
+arch-chroot /usr/${TARGET} "${TARGET}-emerge -quvDU @system && ${TARGET}-emerge -quvDU @world && ${TARGET}-emerge -1vn squashfs-tools dosfstools syslinux grub genkernel gentoo-sources && genkernel --bootdir=/boot --firmware all"
 
 ### ISO make section
 

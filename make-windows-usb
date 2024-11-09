@@ -1,0 +1,2 @@
+#!/bin/sh
+woeusb --device $1 $2 --target-filesystem ntfs

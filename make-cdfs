@@ -1,3 +1,6 @@
 #!/bin/sh
-tar czf /tmp/archive.tar.gz $1
-mkisofs -r -o - /tmp/archive.tar.gz | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -
+tar cf /tmp/archive.tar $1
+# uncomment if compression is needed.
+# brotli -o /tmp/archive.tar.br --best /tmp/archive.tar
+mkisofs -r -o - /tmp/archive.tar | xorriso -as cdrecord dev=/dev/sr0 blank=as_needed -
+rm /tmp/archive.tar # /tmp/archive.tar.br

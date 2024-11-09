@@ -1,0 +1,11 @@
+#!/bin/sh
+
+pid=$1
+
+while read -r vaddr; do
+    offset=$(($vaddr / 4096 * 8))
+    physical_addr=$(dd if="/proc/$pid/pagemap" bs=8 skip=$offset count=1 status=none | hexdump -e '1/8 "%u\n"')
+    echo "Virtual Address: $vaddr, Physical Address: $physical_addr"
+done < <(cat "/proc/$pid/maps" | awk '{print $1}')
+
+exit 0

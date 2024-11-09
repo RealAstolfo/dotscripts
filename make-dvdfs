@@ -1,0 +1,4 @@
+#!/bin/sh
+growisofs -dvd-compat -rock -V "Projects 2024" $1 -Z /dev/sr0
+# uncomment if compression is needed.
+# brotli -o /tmp/archive.tar.br --best /tmp/archive.tar
